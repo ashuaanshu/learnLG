@@ -7,12 +7,26 @@ from typing import TypedDict, Annotated
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import InMemorySaver
 from rich import print as rprint
+import datetime
+#--------------------------------------------------
+from langchain.tools import tool
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
 
 
 
 checkpointr = InMemorySaver()
 
 model = ChatOllama(model="llama3.2", temperature=0.9)
+
+@tool
+def datetime_now() -> str:
+    """Returns the current date and time."""
+    return datetime.datetime.now().isoformat()
 
 @tool
 def add(x: int, y: int) -> int:
@@ -29,8 +43,44 @@ def multiply(x: int, y: int) -> int:
     """Multiplies two numbers."""
     return x * y
 
+#--------------------------------------------------
+@tool
+def train_status(train_number: str, day: str = "today") -> str:
+    """Get live train running status using train number and day (today/yesterday)."""
+    
+    options = Options()
+    options.add_argument("--headless=new")
 
-tools = [add, subtract, multiply]
+    driver = webdriver.Chrome(options=options)
+
+    try:
+        driver.get(f"https://www.railrestro.com/live-train-running-status/{train_number}?day={day}")
+        wait = WebDriverWait(driver, 20)
+
+        card = wait.until(
+            EC.visibility_of_element_located((
+                By.XPATH,
+                "//div[contains(@class,'card-body') and contains(@class,'text-center')]"
+            ))
+        )
+
+        strongs = card.find_elements(By.TAG_NAME, "strong")
+
+        if len(strongs) >= 2:
+            station = strongs[0].text
+            updated = strongs[1].text
+            return f"Train {train_number} is at {station}. Last updated: {updated}"
+        else:
+            return "Train data not found."
+
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+    finally:
+        driver.quit()
+#--------------------------------------------------
+
+tools = [add, subtract, multiply, datetime_now, train_status]
 
 model_with_tools = model.bind_tools(tools)
 
@@ -39,9 +89,10 @@ class TestState(TypedDict):
     
 def chatbot(state: TestState):
     messages = [("system",
-    "You are a helpful assistant and math agent. If you get a math question, "
-    "use the available tools to solve it until you reach the final answer, "
-    "and explain the process step-by-step.")]+state["messages"]
+    """You are a helpful assistant. 
+    - Use math tools for calculations.
+    - Use train_status tool when user asks about train running status.
+    - Always call tools when needed instead of guessing.""")]+state["messages"]
     response = model_with_tools.invoke(messages)
     return {"messages":[response]}
 
