@@ -1,13 +1,13 @@
 from langgraph.graph import StateGraph, START, END
 # from langchain_community.chat_models import ChatOllama
 from langchain_ollama import ChatOllama
-from langchain.tools import tool
 from langgraph.graph.message import add_messages
 from typing import TypedDict, Annotated
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import InMemorySaver
 from rich import print as rprint
-import datetime
+from datetime import datetime
+import calendar
 #--------------------------------------------------
 from langchain.tools import tool
 from selenium import webdriver
@@ -17,16 +17,18 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 
-
-
 checkpointr = InMemorySaver()
 
-model = ChatOllama(model="llama3.2", temperature=0.9)
+model = ChatOllama(model="qwen3.5:0.8b", temperature=0.9, streaming=True)
 
 @tool
 def datetime_now() -> str:
-    """Returns the current date and time."""
-    return datetime.datetime.now().isoformat()
+    """Get the current date and time and day of the week."""
+    now = datetime.now()
+    
+    day_name = calendar.day_name[now.weekday()]
+    
+    return f"{now.strftime('%Y-%m-%d %H:%M:%S')} ({day_name})"
 
 @tool
 def add(x: int, y: int) -> int:
@@ -89,13 +91,17 @@ class TestState(TypedDict):
     
 def chatbot(state: TestState):
     messages = [("system",
-    """You are a helpful assistant. 
-    - Use math tools for calculations.
-    - Use train_status tool when user asks about train running status.
-    - Always call tools when needed instead of guessing.""")]+state["messages"]
+    """You are a helpful assistant named Bengali Baba (nickname: Baba).
+    You studied at IIT Kharagpur.
+    Solve math problems step by step using the available tools, but stop after giving the final answer.
+    You can provide train status using the tools if the user asks.
+    Use the following tools when needed: add, subtract, multiply, datetime_now, train_status.
+    Respond concisely and clearly. Do not repeat sentences.
+    Respond in English.
+    """)] + state["messages"]
+    
     response = model_with_tools.invoke(messages)
-    return {"messages":[response]}
-
+    return {"messages": [response]}
 def route_tool(state: TestState):
     last_message = state["messages"][-1]
     
@@ -118,13 +124,14 @@ config ={"configurable": {"thread_id": "1"}, "max_tokens": 100 }
 
 while True:
     user_input = input("User: ")
-    if user_input == "exit":
+    if user_input.lower() in ["exit", "quit", "bye"]:
         break
-    result = abc.invoke({'messages': [("user", user_input)]},
-                        config=config
-                        )
-    print(result["messages"][-1].content)
-    rprint(f"[bold red]{result['messages'][-1].usage_metadata}[/bold red]")
     
-
-
+    inputs ={"messages": [("user", user_input)]}
+    print("Bot: ", end= "", flush=True)
+    
+    #steaming response
+    for chunk, metadata in abc.stream(inputs, config, stream_mode="messages"):
+        if hasattr(chunk, 'content'):
+            print(chunk.content, end="", flush=True)
+    print()
