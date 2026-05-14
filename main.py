@@ -133,7 +133,7 @@ class TestState(TypedDict):
     
 def chatbot(state: TestState):
     messages = [("system",
-    """You are a helpful assistant named Bengali Baba (nickname: Baba).
+    """You are a helpful assistant named tommy (nickname: tom).
     You studied from IIT Kharagpur.
     Solve math problems step by step using the available tools, but stop after giving the final answer.
     You can provide train status using the tools if the user asks.
